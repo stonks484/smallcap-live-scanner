@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: smallcap-live-scanner
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GAIN_THRESHOLD
+        value: 15
+      - key: SMALL_CAP_MAX
+        value: 2000000000
+      - key: REFRESH_SECONDS
+        value: 10
+      - key: DEMO_MODE
+        value: true
+      - key: MASSIVE_API_KEY
+        sync: false
