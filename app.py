@@ -131,8 +131,9 @@ async def loop():
     while True:
         rows=await live_scan() if API_KEY else (demo_scan() if DEMO_MODE else [])
         latest_scan=rows; last_scan_at=datetime.now(timezone.utc).isoformat()
-        await broadcast({'type':'scan','timestamp':last_scan_at,'rows':rows,'mode':'LIVE' if API_KEY else 'DEMO','paper':paper.snapshot({r['ticker']:r['price'] for r in rows})})
-        paper.mark_to_market({r['ticker']:r['price'] for r in rows})
+        prices={r['ticker']:r['price'] for r in rows}
+        paper.mark_to_market(prices)
+        await broadcast({'type':'scan','timestamp':last_scan_at,'rows':rows,'mode':'LIVE' if API_KEY else 'DEMO','paper':paper.snapshot(prices)})
         await asyncio.sleep(REFRESH_SECONDS)
 
 
@@ -143,6 +144,9 @@ async def startup():
 
 @app.get('/')
 async def index(): return FileResponse(STATIC/'index.html')
+
+@app.get('/paper')
+async def paper_page(): return FileResponse(STATIC/'paper.html')
 
 @app.get('/health')
 async def health(): return {'ok':True,'mode':'LIVE' if API_KEY else 'DEMO','count':len(latest_scan),'updated':last_scan_at,'paper_enabled':paper.enabled}
