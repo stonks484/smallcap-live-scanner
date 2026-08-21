@@ -11,8 +11,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import FileResponse
 
-from paper_trader import PaperTrader
-
 load_dotenv()
 
 API_KEY = os.getenv('MASSIVE_API_KEY', '').strip()
@@ -20,7 +18,6 @@ SMALL_CAP_MAX = float(os.getenv('SMALL_CAP_MAX', '2000000000'))
 GAIN_THRESHOLD = float(os.getenv('GAIN_THRESHOLD', '15'))
 REFRESH_SECONDS = max(3, int(os.getenv('REFRESH_SECONDS', '10')))
 DEMO_MODE = os.getenv('DEMO_MODE', 'true').lower() == 'true'
-PAPER_STARTING_CASH = float(os.getenv('PAPER_STARTING_CASH', '1000'))
 BASE = 'https://api.massive.com'
 STATIC = Path(__file__).parent / 'static'
 
@@ -28,7 +25,6 @@ app = FastAPI(title='Small-Cap Live Scanner')
 clients: set[WebSocket] = set()
 latest_scan: list[dict[str, Any]] = []
 last_scan_at: str | None = None
-paper = PaperTrader(starting_cash=PAPER_STARTING_CASH)
 
 
 def num(x, default=0.0):
@@ -129,11 +125,9 @@ async def broadcast(payload):
 async def loop():
     global latest_scan,last_scan_at
     while True:
-        rows=await live_scan() if API_KEY else (demo_scan() if DEMO_MODE else [])
-        latest_scan=rows; last_scan_at=datetime.now(timezone.utc).isoformat()
-        prices={r['ticker']:r['price'] for r in rows}
-        paper.mark_to_market(prices)
-        await broadcast({'type':'scan','timestamp':last_scan_at,'rows':rows,'mode':'LIVE' if API_KEY else 'DEMO','paper':paper.snapshot(prices)})
+        latest_scan=await live_scan() if API_KEY else (demo_scan() if DEMO_MODE else [])
+        last_scan_at=datetime.now(timezone.utc).isoformat()
+        await broadcast({'type':'scan','timestamp':last_scan_at,'rows':latest_scan,'mode':'LIVE' if API_KEY else 'DEMO'})
         await asyncio.sleep(REFRESH_SECONDS)
 
 
@@ -145,56 +139,16 @@ async def startup():
 @app.get('/')
 async def index(): return FileResponse(STATIC/'index.html')
 
-@app.get('/paper')
-async def paper_page(): return FileResponse(STATIC/'paper.html')
-
 @app.get('/health')
-async def health(): return {'ok':True,'mode':'LIVE' if API_KEY else 'DEMO','count':len(latest_scan),'updated':last_scan_at,'paper_enabled':paper.enabled}
+async def health(): return {'ok':True,'mode':'LIVE' if API_KEY else 'DEMO','count':len(latest_scan),'updated':last_scan_at}
 
 @app.get('/api/stocks')
 async def stocks(): return {'timestamp':last_scan_at,'rows':latest_scan}
 
-@app.get('/api/paper')
-async def paper_status():
-    prices={r['ticker']:r['price'] for r in latest_scan}
-    return paper.snapshot(prices)
-
-@app.post('/api/paper/buy')
-async def paper_buy(payload: dict):
-    ticker=str(payload.get('ticker','')).upper().strip()
-    row=next((r for r in latest_scan if r['ticker']==ticker),None)
-    if not row: raise ValueError('Ticker is not in the current scanner universe')
-    price=num(payload.get('price'), row['price'])
-    stop=num(payload.get('stop'), 0)
-    target=payload.get('target')
-    target=num(target, 0) if target is not None else None
-    if not stop: stop=round(price*0.93,4)
-    return paper.open_long(ticker,price,stop,target,num((row.get('quant') or {}).get('score')))
-
-@app.post('/api/paper/sell')
-async def paper_sell(payload: dict):
-    ticker=str(payload.get('ticker','')).upper().strip()
-    row=next((r for r in latest_scan if r['ticker']==ticker),None)
-    price=num(payload.get('price'), row['price'] if row else 0)
-    if not price: raise ValueError('A current price is required')
-    return paper.close(ticker,price,str(payload.get('reason','manual')))
-
-@app.post('/api/paper/reset')
-async def paper_reset(payload: dict | None = None):
-    cash=num((payload or {}).get('cash'), PAPER_STARTING_CASH)
-    paper.reset(cash)
-    return paper.snapshot()
-
-@app.post('/api/paper/kill-switch')
-async def paper_kill_switch():
-    paper.enabled=False
-    return {'enabled':False,'message':'Paper trading kill switch activated'}
-
 @app.websocket('/ws')
 async def ws(socket:WebSocket):
     await socket.accept(); clients.add(socket)
-    prices={r['ticker']:r['price'] for r in latest_scan}
-    await socket.send_json({'type':'scan','timestamp':last_scan_at,'rows':latest_scan,'mode':'LIVE' if API_KEY else 'DEMO','paper':paper.snapshot(prices)})
+    await socket.send_json({'type':'scan','timestamp':last_scan_at,'rows':latest_scan,'mode':'LIVE' if API_KEY else 'DEMO'})
     try:
         while True: await socket.receive_text()
     except Exception: clients.discard(socket)
