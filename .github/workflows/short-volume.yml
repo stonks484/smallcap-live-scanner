@@ -23,30 +23,54 @@ jobs:
       - name: Download latest FINRA consolidated short-volume file
         run: |
           python - <<'PY'
-          import json, re, urllib.request
+          import json
+          import urllib.error
+          import urllib.request
+          from datetime import datetime, timedelta, timezone
           from pathlib import Path
-          page = urllib.request.urlopen('https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data/daily-short-sale-volume-files', timeout=30).read().decode('utf-8', 'ignore')
-          pattern = r'https://cdn[.]finra[.]org/equity/regsho/daily/CNMSshvol[0-9]{8}[.]txt'
-          urls = sorted(set(re.findall(pattern, page)))
-          if not urls:
-              raise SystemExit('Could not find a FINRA consolidated short-volume file.')
-          url = urls[-1]
-          raw = urllib.request.urlopen(url, timeout=30).read().decode('utf-8', 'ignore')
-          lines = [x.strip() for x in raw.splitlines() if x.strip()]
-          if not lines or not lines[0].startswith('Date|Symbol|ShortVolume'):
-              raise SystemExit('Unexpected FINRA file format.')
+
+          base = 'https://cdn.finra.org/equity/regsho/daily/CNMSshvol'
+          found = None
+          for days_back in range(0, 10):
+              d = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime('%Y%m%d')
+              url = f'{base}{d}.txt'
+              try:
+                  raw = urllib.request.urlopen(url, timeout=30).read().decode('utf-8', 'ignore')
+              except (urllib.error.HTTPError, urllib.error.URLError):
+                  continue
+              lines = [x.strip() for x in raw.splitlines() if x.strip()]
+              if lines and lines[0].startswith('Date|Symbol|ShortVolume'):
+                  found = (d, url, lines)
+                  break
+          if not found:
+              raise SystemExit('Could not locate a recent FINRA CNMS short-volume file.')
+
+          trade_date, url, lines = found
           rows = []
           for line in lines[1:]:
               parts = line.split('|')
-              if len(parts) != 6 or not parts[0].isdigit():
+              if len(parts) != 6:
                   continue
               try:
-                  rows.append({'date':parts[0],'symbol':parts[1],'short_volume':float(parts[2]),'short_exempt_volume':float(parts[3]),'total_volume':float(parts[4]),'market':parts[5]})
+                  rows.append({
+                      'date': parts[0],
+                      'symbol': parts[1],
+                      'short_volume': float(parts[2]),
+                      'short_exempt_volume': float(parts[3]),
+                      'total_volume': float(parts[4]),
+                      'market': parts[5],
+                  })
               except ValueError:
                   continue
+
           Path('data').mkdir(exist_ok=True)
-          Path('data/short_volume.json').write_text(json.dumps(rows,separators=(',',':')),encoding='utf-8')
-          Path('data/short_volume_meta.json').write_text(json.dumps({'source':'FINRA','url':url,'trade_date':rows[0]['date'] if rows else None,'row_count':len(rows)},separators=(',',':')),encoding='utf-8')
+          Path('data/short_volume.json').write_text(json.dumps(rows, separators=(',', ':')), encoding='utf-8')
+          Path('data/short_volume_meta.json').write_text(json.dumps({
+              'source': 'FINRA',
+              'url': url,
+              'trade_date': trade_date,
+              'row_count': len(rows),
+          }, separators=(',', ':')), encoding='utf-8')
           print(f'Wrote {len(rows)} rows from {url}')
           PY
 
