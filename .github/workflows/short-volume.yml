@@ -26,7 +26,8 @@ jobs:
           import json, re, urllib.request
           from pathlib import Path
           page = urllib.request.urlopen('https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data/daily-short-sale-volume-files', timeout=30).read().decode('utf-8', 'ignore')
-          urls = sorted(set(re.findall(r'https://cdn\.finra\.org/equity/regsho/daily/CNMSshvol\d{8}\.txt', page)))
+          pattern = r'https://cdn[.]finra[.]org/equity/regsho/daily/CNMSshvol[0-9]{8}[.]txt'
+          urls = sorted(set(re.findall(pattern, page)))
           if not urls:
               raise SystemExit('Could not find a FINRA consolidated short-volume file.')
           url = urls[-1]
