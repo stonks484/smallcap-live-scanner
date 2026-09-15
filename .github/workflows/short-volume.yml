@@ -23,49 +23,63 @@ jobs:
       - name: Download latest FINRA consolidated short-volume file
         run: |
           python - <<'PY'
-          import html
+          import datetime as dt
           import json
-          import re
           import urllib.request
           from pathlib import Path
 
-          page_url = 'https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data/daily-short-sale-volume-files'
-          page = urllib.request.urlopen(page_url, timeout=30).read().decode('utf-8', 'ignore')
-          hrefs = re.findall(r'href=[\"\']([^\"\']*CNMSshvol[0-9]{8}[^\"\']*)', page, flags=re.I)
-          urls = []
-          for href in hrefs:
-              href = html.unescape(href)
-              if href.startswith('//'):
-                  href = 'https:' + href
-              if href.startswith('http') and 'cdn.finra.org' in href and 'CNMSshvol' in href:
-                  urls.append(href)
-          urls = sorted(set(urls))
-          if not urls:
-              raise SystemExit('Could not find a published FINRA consolidated NMS short-volume link on the FINRA page.')
+          def get(url):
+              req = urllib.request.Request(url, headers={
+                  'User-Agent': 'Mozilla/5.0 smallcap-live-scanner/1.0',
+                  'Accept': 'text/plain,*/*'
+              })
+              return urllib.request.urlopen(req, timeout=45).read().decode('utf-8', 'ignore')
 
-          url = urls[-1]
-          raw = urllib.request.urlopen(url, timeout=30).read().decode('utf-8', 'ignore')
-          lines = [x.strip() for x in raw.splitlines() if x.strip()]
-          if not lines or not lines[0].startswith('Date|Symbol|ShortVolume'):
-              raise SystemExit(f'Unexpected FINRA file format: {url}')
+          def parse(raw):
+              lines = [x.strip() for x in raw.splitlines() if x.strip()]
+              if not lines or not lines[0].startswith('Date|Symbol|ShortVolume'):
+                  return []
+              rows = []
+              for line in lines[1:]:
+                  parts = line.split('|')
+                  if len(parts) != 6:
+                      continue
+                  try:
+                      rows.append({
+                          'date': parts[0],
+                          'symbol': parts[1],
+                          'short_volume': float(parts[2]),
+                          'short_exempt_volume': float(parts[3]),
+                          'total_volume': float(parts[4]),
+                          'market': parts[5],
+                      })
+                  except ValueError:
+                      continue
+              return rows
 
-          rows = []
-          for line in lines[1:]:
-              parts = line.split('|')
-              if len(parts) != 6:
-                  continue
-              try:
-                  rows.append({
-                      'date': parts[0],
-                      'symbol': parts[1],
-                      'short_volume': float(parts[2]),
-                      'short_exempt_volume': float(parts[3]),
-                      'total_volume': float(parts[4]),
-                      'market': parts[5],
-                  })
-              except ValueError:
-                  continue
+          today = dt.date.today()
+          found = None
+          for days_back in range(0, 10):
+              d = today - dt.timedelta(days=days_back)
+              stamp = d.strftime('%Y%m%d')
+              direct = f'https://cdn.finra.org/equity/regsho/daily/CNMSshvol{stamp}.txt'
+              candidates = [direct, f'https://r.jina.ai/{direct}']
+              for url in candidates:
+                  try:
+                      raw = get(url)
+                      rows = parse(raw)
+                      if rows:
+                          found = (url, rows)
+                          break
+                  except Exception as e:
+                      print(f'Fetch failed: {url} -> {e}')
+              if found:
+                  break
 
+          if not found:
+              raise SystemExit('Could not retrieve a recent FINRA consolidated short-volume file from FINRA CDN or the free Reader fallback.')
+
+          url, rows = found
           Path('data').mkdir(exist_ok=True)
           Path('data/short_volume.json').write_text(json.dumps(rows, separators=(',', ':')), encoding='utf-8')
           Path('data/short_volume_meta.json').write_text(json.dumps({
@@ -73,6 +87,7 @@ jobs:
               'url': url,
               'trade_date': rows[0]['date'] if rows else None,
               'row_count': len(rows),
+              'retrieved_at_utc': dt.datetime.now(dt.timezone.utc).isoformat(),
           }, separators=(',', ':')), encoding='utf-8')
           print(f'Wrote {len(rows)} rows from {url}')
           PY
