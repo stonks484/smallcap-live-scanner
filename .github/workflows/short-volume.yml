@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'static/dashboard.html'
       - '.github/workflows/short-volume.yml'
   schedule:
     - cron: '0 23 * * 1-5'
@@ -20,12 +21,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download latest FINRA consolidated short-volume file
-        shell: python
         run: |
+          python - <<'PY'
           import json, re, urllib.request
           from pathlib import Path
           page = urllib.request.urlopen('https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data/daily-short-sale-volume-files', timeout=30).read().decode('utf-8', 'ignore')
-          urls = sorted(set(re.findall(r'https://cdn\.finra\.org/equity/regsho/daily/CNMSshvol\d{8}\.txt', page)))
+          urls = sorted(set(re.findall(r'https://cdn\\.finra\\.org/equity/regsho/daily/CNMSshvol\\d{8}\\.txt', page)))
           if not urls:
               raise SystemExit('Could not find a FINRA consolidated short-volume file.')
           url = urls[-1]
@@ -46,6 +47,7 @@ jobs:
           Path('data/short_volume.json').write_text(json.dumps(rows,separators=(',',':')),encoding='utf-8')
           Path('data/short_volume_meta.json').write_text(json.dumps({'source':'FINRA','url':url,'trade_date':rows[0]['date'] if rows else None,'row_count':len(rows)},separators=(',',':')),encoding='utf-8')
           print(f'Wrote {len(rows)} rows from {url}')
+          PY
 
       - name: Commit updated dataset
         run: |
