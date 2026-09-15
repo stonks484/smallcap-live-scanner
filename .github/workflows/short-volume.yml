@@ -1,6 +1,10 @@
 name: Update FINRA short volume
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/short-volume.yml'
   schedule:
     - cron: '0 23 * * 1-5'
   workflow_dispatch:
