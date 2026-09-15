@@ -1,0 +1,53 @@
+name: Update FINRA short volume
+
+on:
+  schedule:
+    - cron: '0 23 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-short-volume:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download latest FINRA consolidated short-volume file
+        shell: python
+        run: |
+          import json, re, urllib.request
+          from pathlib import Path
+          page = urllib.request.urlopen('https://www.finra.org/finra-data/browse-catalog/short-sale-volume-data/daily-short-sale-volume-files', timeout=30).read().decode('utf-8', 'ignore')
+          urls = sorted(set(re.findall(r'https://cdn\.finra\.org/equity/regsho/daily/CNMSshvol\d{8}\.txt', page)))
+          if not urls:
+              raise SystemExit('Could not find a FINRA consolidated short-volume file.')
+          url = urls[-1]
+          raw = urllib.request.urlopen(url, timeout=30).read().decode('utf-8', 'ignore')
+          lines = [x.strip() for x in raw.splitlines() if x.strip()]
+          if not lines or not lines[0].startswith('Date|Symbol|ShortVolume'):
+              raise SystemExit('Unexpected FINRA file format.')
+          rows = []
+          for line in lines[1:]:
+              parts = line.split('|')
+              if len(parts) != 6 or not parts[0].isdigit():
+                  continue
+              try:
+                  rows.append({'date':parts[0],'symbol':parts[1],'short_volume':float(parts[2]),'short_exempt_volume':float(parts[3]),'total_volume':float(parts[4]),'market':parts[5]})
+              except ValueError:
+                  continue
+          Path('data').mkdir(exist_ok=True)
+          Path('data/short_volume.json').write_text(json.dumps(rows,separators=(',',':')),encoding='utf-8')
+          Path('data/short_volume_meta.json').write_text(json.dumps({'source':'FINRA','url':url,'trade_date':rows[0]['date'] if rows else None,'row_count':len(rows)},separators=(',',':')),encoding='utf-8')
+          print(f'Wrote {len(rows)} rows from {url}')
+
+      - name: Commit updated dataset
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/short_volume.json data/short_volume_meta.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'Update FINRA short volume data'
+          git push
