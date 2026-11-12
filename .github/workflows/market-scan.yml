@@ -1,6 +1,11 @@
 name: Refresh free market candidates
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/market-scan.yml'
+      - 'scripts/update_market_scan.py'
   schedule:
     # 15-minute cadence during the broad US trading-day window (UTC); Actions may run late.
     - cron: '*/15 12-22 * * 1-5'
