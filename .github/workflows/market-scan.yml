@@ -1,0 +1,36 @@
+name: Refresh free market candidates
+
+on:
+  schedule:
+    # 15-minute cadence during the broad US trading-day window (UTC); Actions may run late.
+    - cron: '*/15 12-22 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: market-scan-main
+  cancel-in-progress: false
+
+jobs:
+  update-market-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Generate candidate snapshot
+        run: python3 scripts/update_market_scan.py
+
+      - name: Publish generated JSON to GitHub Pages
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/market_scan.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'Refresh scheduled market candidates'
+          git push origin HEAD:main

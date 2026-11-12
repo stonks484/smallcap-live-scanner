@@ -27,11 +27,17 @@ The scanner entry page now includes a dedicated volume-intelligence section for 
 - **Buy volume:** deliberately not fabricated. A universal consolidated buy-volume figure is not published for every U.S. venue. The UI will show buy volume once a permitted trade-side feed is connected.
 - The section keeps **short volume separate from short interest** because they measure different things.
 
-A scheduled GitHub Actions workflow downloads the latest FINRA consolidated daily short-volume file on weekdays and stores it as `data/short_volume.json`. The dataset is daily/end-of-day rather than an intraday short-volume feed.
+A scheduled GitHub Actions workflow downloads the latest FINRA consolidated daily short-volume file on weekdays and stores it as `data/short_volume.json`. The dataset is daily/end-of-day rather than an intraday short-volume feed. It does not report buy volume.
+
+## Scheduled market candidates (free, delayed data)
+
+`scripts/update_market_scan.py` reads up to 250 entries from Yahoo Finance's public `small_cap_gainers` screener and writes a bounded small-cap candidate snapshot to `data/market_scan.json`. GitHub Actions targets a 15-minute cadence on weekdays during a broad US trading-day window and commits the generated JSON to `main`, where GitHub Pages serves it. The open dashboard checks the published file every 60 seconds and shows its source and generated timestamp. This is a candidate list from Yahoo's screener, not a complete exchange-wide scan.
+
+This is **not a real-time scanner**. Yahoo's public screener is an unofficial, unauthenticated endpoint that can change or refuse automated requests; its prices may be delayed or end-of-day. GitHub scheduled workflows can start late or be skipped, and the dashboard only refreshes while open. A failed fetch leaves the last good snapshot in place and the page shows its age/source timestamp. No API key, paid plan, or billing setup is used. Displayed market volume is total reported volume, not buy volume or trade-side volume.
 
 ## Important data limitation
 
-The GitHub Pages dashboard is intentionally static. TradingView widgets run in cross-origin iframes, so the page cannot reliably read their internal screener rows or OHLCV values with JavaScript. The dashboard therefore does **not** fabricate live prices, probabilities or trade levels.
+The GitHub Pages dashboard is intentionally static. TradingView widgets run in cross-origin iframes, so the page cannot reliably read their internal screener rows or OHLCV values with JavaScript. The scheduled Yahoo snapshot is separate from TradingView and does **not** make the TradingView widgets or chart into a continuously updating quote feed. The dashboard does not fabricate buy volume, probabilities or trade levels.
 
 The numerical quant engine should only be enabled when a permitted browser-readable/server-side OHLCV source is connected. The existing FastAPI backend supports an optional market-data provider through environment variables for local/server deployments.
 
