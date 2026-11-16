@@ -1,0 +1,33 @@
+name: Refresh official Nasdaq trading halts
+
+on:
+  schedule:
+    # Nasdaq says its RSS data updates once per minute; do not poll more frequently.
+    - cron: '* 11-23 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: trading-halts-main
+  cancel-in-progress: true
+
+jobs:
+  refresh-halts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Fetch Nasdaq Trader halt and resumption feeds
+        run: python3 scripts/update_trading_halts.py
+      - name: Publish halt snapshot
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/trading_halts.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'Refresh Nasdaq trading halt snapshot'
+          git push origin HEAD:main
