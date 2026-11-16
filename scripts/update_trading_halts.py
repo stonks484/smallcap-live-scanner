@@ -26,6 +26,7 @@ def parse_item(item):
     # Some feed versions put fields in a pipe-separated title; parse both title and description.
     result = {}
     for field in FIELDS:
+        label = r"(?<!Halt )\\bDate" if field == "Date" else re.escape(field)
         m = re.search(r"(?:^|\b)" + re.escape(field) + r"\s*[:=]\s*(.*?)(?=\s+(?:" + "|".join(map(re.escape, FIELDS)) + r")\s*[:=]|$)", raw, re.I)
         if m:
             result[ALIASES[field]] = m.group(1).strip(" |;")
@@ -40,9 +41,11 @@ def main():
     today = now.strftime("%m%d%Y")
     urls = [BASE, BASE + "&haltdate=" + today, BASE + "&resumedate=" + today]
     records = {}
+    successful_feeds = 0
     for url in urls:
         try:
             root = fetch(url)
+            successful_feeds += 1
             for item in root.findall(".//item"):
                 row = parse_item(item)
                 if not row: continue
@@ -51,8 +54,8 @@ def main():
         except Exception as exc:
             print("Feed fetch warning:", url, str(exc))
     rows = list(records.values())
-    if not rows:
-        raise RuntimeError("Nasdaq Trader returned no parseable halt records; refusing to overwrite the last good file")
+    if successful_feeds == 0:
+        raise RuntimeError("All Nasdaq Trader RSS requests failed; refusing to overwrite the last good file")
     rows.sort(key=lambda x: (x.get("halt_date",""), x.get("halt_time","")), reverse=True)
     payload = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00","Z"),
