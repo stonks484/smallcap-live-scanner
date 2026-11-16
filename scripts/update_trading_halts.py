@@ -26,8 +26,8 @@ def parse_item(item):
     # Some feed versions put fields in a pipe-separated title; parse both title and description.
     result = {}
     for field in FIELDS:
-        label = r"(?<!Halt )\\bDate" if field == "Date" else re.escape(field)
-        m = re.search(r"(?:^|\b)" + re.escape(field) + r"\s*[:=]\s*(.*?)(?=\s+(?:" + "|".join(map(re.escape, FIELDS)) + r")\s*[:=]|$)", raw, re.I)
+        label = r"(?<!Halt )\bDate" if field == "Date" else re.escape(field)
+        m = re.search(r"(?:^|\b)" + label + r"\s*[:=]\s*(.*?)(?=\s+(?:" + "|".join(map(re.escape, FIELDS)) + r")\s*[:=]|$)", raw, re.I)
         if m:
             result[ALIASES[field]] = m.group(1).strip(" |;")
     title = item.findtext("title") or ""
