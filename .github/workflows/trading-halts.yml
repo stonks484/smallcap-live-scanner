@@ -3,7 +3,7 @@ name: Refresh official Nasdaq trading halts
 on:
   schedule:
     # Nasdaq says its RSS data updates once per minute; do not poll more frequently.
-    - cron: '* 11-23 * * 1-5'
+    - cron: '*/5 11-23 * * 1-5'
   workflow_dispatch:
 
 permissions:
