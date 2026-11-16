@@ -26,12 +26,12 @@ def parse_item(item):
     # Some feed versions put fields in a pipe-separated title; parse both title and description.
     result = {}
     for field in FIELDS:
-        m = re.search(r"(?:^|\\b)" + re.escape(field) + r"\\s*[:=]\\s*(.*?)(?=\\s+(?:" + "|".join(map(re.escape, FIELDS)) + r")\\s*[:=]|$)", raw, re.I)
+        m = re.search(r"(?:^|\b)" + re.escape(field) + r"\s*[:=]\s*(.*?)(?=\s+(?:" + "|".join(map(re.escape, FIELDS)) + r")\s*[:=]|$)", raw, re.I)
         if m:
             result[ALIASES[field]] = m.group(1).strip(" |;")
     title = item.findtext("title") or ""
     if not result.get("symbol"):
-        m = re.search(r"(?:Trading Halt|Trade Halt)\\s*[-:]?\\s*([A-Z][A-Z0-9.\\-/]*)", title, re.I)
+        m = re.search(r"(?:Trading Halt|Trade Halt)\s*[-:]?\s*([A-Z][A-Z0-9.\-/]*)", title, re.I)
         if m: result["symbol"] = m.group(1).upper()
     return result if result.get("symbol") else None
 
@@ -62,7 +62,7 @@ def main():
         "rows": rows
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(payload, separators=(",",":")) + "\\n", encoding="utf-8")
+    OUT.write_text(json.dumps(payload, separators=(",",":")) + "\n", encoding="utf-8")
     print("Published", len(rows), "halt records")
 
 if __name__ == "__main__":
